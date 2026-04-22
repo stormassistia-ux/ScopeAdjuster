@@ -7,7 +7,7 @@
     "start": "node dist/server.js",
     "dev": "nodemon src/server.ts",
     "test:worker": "ts-node src/testWorkerQueue.ts",
-    "build": "prisma generate && tsc"
+    "build": "prisma generate && prisma migrate deploy && tsc"
   },
   "keywords": [],
   "author": "",

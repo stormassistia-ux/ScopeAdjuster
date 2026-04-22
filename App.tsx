@@ -66,18 +66,41 @@ const AppContent: React.FC = () => {
     state, handleModeToggle, handleLogin, handleLogout
   } = useApp();
 
+  if (isAuthLoading) {
+    return (
+      <div className="fixed inset-0 bg-[#03050a] flex flex-col items-center justify-center gap-6">
+        <div className="relative">
+          <div className="absolute inset-0 bg-red-500 blur-3xl opacity-20 animate-pulse" />
+          <Loader2 size={60} className="text-red-500 animate-spin relative z-10" />
+        </div>
+        <p className="text-red-500 font-black uppercase tracking-[0.5em] animate-pulse">Initializing Neural Link...</p>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="fixed inset-0 bg-[#03050a] flex flex-col items-center justify-center gap-8 p-8">
+        <div className="flex flex-col items-center gap-4">
+          <div className="bg-[#0f172a] p-4 rounded-2xl text-red-500 shadow-[0_10px_50px_rgba(220,38,38,0.3)] border border-red-500/20 transform -rotate-12">
+            <ClipboardCheck size={48} />
+          </div>
+          <div className="text-center">
+            <h1 className="text-4xl font-black text-red-500 tracking-tighter uppercase italic">AdjusterAI</h1>
+            <p className="text-slate-500 font-bold uppercase tracking-[0.3em] text-xs mt-1">Repair Orchestration Engine</p>
+          </div>
+        </div>
+        <button onClick={handleLogin}
+          className="flex items-center gap-3 px-10 py-5 bg-red-600 hover:bg-red-500 text-white font-black uppercase tracking-widest rounded-2xl transition-all shadow-[0_0_40px_rgba(220,38,38,0.4)] border-b-4 border-red-800 active:scale-95">
+          <User size={20} /> Sign in with Google
+        </button>
+        <p className="text-slate-600 text-xs font-bold uppercase tracking-widest">Authorized personnel only</p>
+      </div>
+    );
+  }
+
   return (
     <div className="flex h-screen bg-slate-50 dark:bg-[#03050a] transition-all font-sans selection:bg-red-500/30 selection:text-red-200 overflow-hidden">
-      {isAuthLoading && (
-        <div className="fixed inset-0 z-[300] bg-[#03050a] flex flex-col items-center justify-center gap-6">
-          <div className="relative">
-            <div className="absolute inset-0 bg-red-500 blur-3xl opacity-20 animate-pulse" />
-            <Loader2 size={60} className="text-red-500 animate-spin relative z-10" />
-          </div>
-          <p className="text-red-500 font-black uppercase tracking-[0.5em] animate-pulse">Initializing Neural Link...</p>
-        </div>
-      )}
-
       <aside className={`fixed left-0 top-0 h-full z-50 bg-[#080c16] border-r-2 border-blue-900/20 transition-all duration-500 cubic-bezier(0.4, 0, 0.2, 1) flex flex-col shadow-[25px_0_100px_-30px_rgba(0,0,0,0.5)] ${isSidebarCollapsed ? 'w-20 md:w-24' : 'w-72 md:w-80'}`}>
         <div className="p-4 md:p-8 flex items-center justify-between shrink-0">
           {!isSidebarCollapsed && (
