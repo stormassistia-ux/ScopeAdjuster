@@ -1,0 +1,64 @@
+{
+  "entities": {
+    "Report": {
+      "title": "Saved Report",
+      "description": "A forensic repair scope or audit report.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "type": { "type": "string", "enum": ["Investigation", "Comparison", "Reverse Engineer", "Compliance Audit"] },
+        "title": { "type": "string" },
+        "carrier": { "type": "string" },
+        "timestamp": { "type": "number" },
+        "platform": { "type": "string" },
+        "insuredName": { "type": "string" },
+        "claimNumber": { "type": "string" },
+        "state": { "type": "object" }
+      },
+      "required": ["id", "userId", "type", "title", "timestamp"]
+    },
+    "User": {
+      "title": "User Profile",
+      "description": "User account information.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "user"] }
+      },
+      "required": ["uid", "email"]
+    },
+    "MasterBaseline": {
+      "title": "Master Baseline",
+      "description": "A gold standard estimate for comparison.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "platform": { "type": "string" },
+        "timestamp": { "type": "number" },
+        "lineItems": { "type": "array" },
+        "metadata": { "type": "object" }
+      },
+      "required": ["id", "userId", "name", "timestamp", "lineItems"]
+    }
+  },
+  "firestore": {
+    "reports": {
+      "schema": "Report",
+      "description": "Collection of forensic reports."
+    },
+    "users": {
+      "schema": "User",
+      "description": "Collection of user profiles."
+    },
+    "baselines": {
+      "schema": "MasterBaseline",
+      "description": "Collection of master baselines."
+    }
+  }
+}

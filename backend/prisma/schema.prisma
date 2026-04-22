@@ -1,0 +1,219 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Organization {
+  id          String   @id @default(uuid())
+  name        String
+  billingPlan String   @map("billing_plan")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  users       User[]
+  memberships Membership[]
+  projects    Project[]
+  estimates   Estimate[]
+  runs        ComparisonRun[]
+
+  @@map("organizations")
+}
+
+model User {
+  id          String   @id @default(uuid())
+  orgId       String   @map("org_id")
+  email       String   @unique
+  displayName String   @map("display_name")
+  status      String
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [orgId], references: [id])
+  memberships  Membership[]
+
+  @@map("users")
+}
+
+model Membership {
+  id     String @id @default(uuid())
+  orgId  String @map("org_id")
+  userId String @map("user_id")
+  role   String // admin, adjuster, reviewer, read-only
+
+  organization Organization @relation(fields: [orgId], references: [id])
+  user         User         @relation(fields: [userId], references: [id])
+
+  @@unique([orgId, userId])
+  @@map("memberships")
+}
+
+model Project {
+  id            String   @id @default(uuid())
+  orgId         String   @map("org_id")
+  claimNumber   String   @map("claim_number")
+  lossDate      DateTime @map("loss_date")
+  propertyState String   @map("property_state")
+  carrier       String?
+  createdBy     String   @map("created_by")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [orgId], references: [id])
+  estimates    Estimate[]
+
+  @@map("projects")
+}
+
+model Estimate {
+  id            String   @id @default(uuid())
+  orgId         String   @map("org_id")
+  projectId     String   @map("project_id")
+  sourceSystem  String   @map("source_system") // enum: Xactimate, Symbility, etc.
+  versionLabel  String   @map("version_label")
+  currency      String
+  pricingRegion String   @map("pricing_region")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  organization Organization       @relation(fields: [orgId], references: [id])
+  project      Project            @relation(fields: [projectId], references: [id])
+  files        EstimateFile[]
+  lineItems    EstimateLineItem[]
+
+  // For comparisons
+  comparisonRunsA ComparisonRun[] @relation("estimateA")
+  comparisonRunsB ComparisonRun[] @relation("estimateB")
+
+  @@map("estimates")
+}
+
+model EstimateFile {
+  id           String    @id @default(uuid())
+  estimateId   String    @map("estimate_id")
+  objectUri    String    @map("object_uri")
+  sha256       String
+  mimeType     String    @map("mime_type")
+  sizeBytes    Int       @map("size_bytes")
+  ingestStatus String    @map("ingest_status")
+  ingestedAt   DateTime? @map("ingested_at")
+
+  estimate Estimate @relation(fields: [estimateId], references: [id])
+
+  @@index([sha256])
+  @@map("estimate_files")
+}
+
+model EstimateLineItem {
+  id             String  @id @default(uuid())
+  estimateId     String  @map("estimate_id")
+  sectionPath    String  @map("section_path") // e.g., "Roofing > Shingles"
+  code           String?
+  description    String
+  unit           String
+  qty            Float
+  unitPrice      Float   @map("unit_price")
+  totalPrice     Float   @map("total_price")
+  taxable        Boolean
+  depreciation   Float
+  overheadProfit Float   @map("overhead_profit")
+  vendorPayload  Json    @map("vendor_payload") // JSONB
+
+  estimate Estimate @relation(fields: [estimateId], references: [id])
+
+  @@index([estimateId])
+  // Note: Full text index on description would be added natively in PG
+  @@map("estimate_line_items")
+}
+
+model ComparisonRun {
+  id          String    @id @default(uuid())
+  orgId       String    @map("org_id")
+  estimateAId String    @map("estimate_a_id")
+  estimateBId String    @map("estimate_b_id")
+  status      String
+  options     Json
+  createdAt   DateTime  @default(now()) @map("created_at")
+  completedAt DateTime? @map("completed_at")
+
+  organization Organization     @relation(fields: [orgId], references: [id])
+  estimateA    Estimate         @relation("estimateA", fields: [estimateAId], references: [id])
+  estimateB    Estimate         @relation("estimateB", fields: [estimateBId], references: [id])
+  diffs        ComparisonDiff[]
+  reports      ReportArtifact[]
+
+  @@index([orgId, createdAt(sort: Desc)])
+  @@map("comparison_runs")
+}
+
+model ComparisonDiff {
+  id           String  @id @default(uuid())
+  comparisonId String  @map("comparison_id")
+  diffType     String  @map("diff_type") // added, removed, changed
+  aLineItemId  String? @map("a_line_item_id")
+  bLineItemId  String? @map("b_line_item_id")
+  fieldDeltas  Json    @map("field_deltas") // JSONB
+  severity     String
+  notes        String?
+
+  comparison ComparisonRun @relation(fields: [comparisonId], references: [id])
+
+  @@index([comparisonId, diffType])
+  @@map("comparison_diffs")
+}
+
+model ReportArtifact {
+  id           String   @id @default(uuid())
+  comparisonId String   @map("comparison_id")
+  format       String // pdf, html, json
+  objectUri    String   @map("object_uri")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  comparison ComparisonRun @relation(fields: [comparisonId], references: [id])
+
+  @@map("report_artifacts")
+}
+
+model AuditLog {
+  id           String   @id @default(uuid())
+  eventId      String   @map("event_id")
+  orgId        String   @map("org_id")
+  userId       String   @map("user_id")
+  action       String
+  resourceType String   @map("resource_type")
+  resourceId   String   @map("resource_id")
+  ip           String?
+  userAgent    String?  @map("user_agent")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@map("audit_logs")
+}
+
+model MasterBaseline {
+  id          String   @id @default(uuid())
+  userId      String   @map("user_id") // simplistic bridge mapping
+  name        String
+  description String
+  platform    String
+  timestamp   Float
+  lineItems   Json     @map("line_items") // JSONB
+  metadata    Json?    // Optional JSONB
+
+  @@map("master_baselines")
+}
+
+model SavedReport {
+  id          String   @id @default(uuid())
+  userId      String   @map("user_id")
+  type        String
+  title       String
+  carrier     String
+  timestamp   Float
+  platform    String
+  state       Json     // JSONB UI state blob
+
+  @@index([userId])
+  @@index([timestamp(sort: Desc)])
+  @@map("saved_reports")
+}

@@ -1,0 +1,8 @@
+{
+  "name": "ScopeAdjuster",
+  "description": "An AI-powered insurance estimating assistant that analyzes damage photos and synopses against carrier guidelines to generate Xactimate and Symbility-ready line items and labeled photo reports.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
