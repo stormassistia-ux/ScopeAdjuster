@@ -14,7 +14,7 @@ export class ErrorBoundary extends React.Component<React.PropsWithChildren, Stat
   }
 
   render() {
-    if (!this.state.hasError) return this.props.children;
+    if (!this.state.hasError) return (this as unknown as { props: React.PropsWithChildren }).props.children;
 
     return (
       <div className="min-h-screen bg-[#050810] flex items-center justify-center p-8">
