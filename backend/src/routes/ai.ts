@@ -25,6 +25,14 @@ import {
 const router = Router();
 router.use(requireAuth);
 
+// Returns the Gemini API key to authenticated users so the Live (dictation) API
+// can be used client-side. Key is never in the static bundle.
+router.get('/live-token', (_req, res) => {
+  const key = process.env.GEMINI_API_KEY;
+  if (!key) return res.status(503).json({ error: 'Dictation service not configured.' });
+  res.json({ apiKey: key });
+});
+
 router.post('/guidelines', async (req: AuthenticatedRequest, res) => {
   const body = validate(GuidelinesSchema, req.body, res);
   if (!body) return;
