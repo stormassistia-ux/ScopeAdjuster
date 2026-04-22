@@ -71,21 +71,14 @@ import {
   Scale
 } from 'lucide-react';
 import { GoogleGenAI, Modality, LiveServerMessage } from '@google/genai';
-import { auth, db } from './src/firebase';
-import { 
-  onAuthStateChanged, 
-  signInWithPopup, 
-  GoogleAuthProvider, 
-  signOut, 
-  User as FirebaseUser 
+import { auth } from './src/firebase';
+import {
+  onAuthStateChanged,
+  signInWithPopup,
+  GoogleAuthProvider,
+  signOut,
+  User as FirebaseUser
 } from 'firebase/auth';
-import { 
-  doc, 
-  setDoc, 
-  getDoc,
-  Timestamp,
-  getDocFromServer
-} from 'firebase/firestore';
 import { Platform, Room, EvidenceItem, EstimationState, LineItem, DamageCategory, EvidenceType, AppMode, ComparisonResult, SavedReport, MasterBaseline, MarketIntel, PriceAdjustment } from './types';
 import { fetchCarrierGuidelines, analyzeDamage, compareEstimates, reverseEngineerEstimate, auditEstimate, parseBaselineFile, searchMarketRates, suggestBaselineAdjustments } from './services/geminiService';
 import { uploadEstimateFile } from './src/supabaseClient';
@@ -299,25 +292,8 @@ const App: React.FC = () => {
       setUser(firebaseUser);
       setIsAuthLoading(false);
       
-      if (firebaseUser) {
-        // Ensure user document exists in Firestore
-        const userRef = doc(db, 'users', firebaseUser.uid);
-        const userSnap = await getDoc(userRef);
-        
-        if (!userSnap.exists()) {
-          await setDoc(userRef, {
-            uid: firebaseUser.uid,
-            email: firebaseUser.email,
-            displayName: firebaseUser.displayName,
-            photoURL: firebaseUser.photoURL,
-            role: 'client',
-            createdAt: Timestamp.now(),
-            lastLogin: Timestamp.now()
-          });
-        } else {
-          await setDoc(userRef, { lastLogin: Timestamp.now() }, { merge: true });
-        }
-      }
+      // User identity is managed via Firebase Auth JWT.
+      // Full user profile stored in Postgres (Phase 5 — multi-tenant org setup).
     });
 
     return () => unsubscribe();
