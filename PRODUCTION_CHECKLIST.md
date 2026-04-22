@@ -144,29 +144,30 @@ Currently the app uses both Firestore (user profile docs, legacy) and Postgres (
 
 ---
 
-## Phase 6 — Observability & Operations
+## Phase 6 — Observability & Operations ✅
 
-- [ ] Add Sentry or LogRocket to the frontend for error tracking
-- [ ] Add health check monitoring (UptimeRobot or Better Uptime on `/health`)
-- [ ] Set up Supabase query performance monitoring
-- [ ] Set Google AI quota alerts so you know before hitting Gemini rate limits
-- [ ] Document your runbook: how to restart the backend, how to run a DB migration, how to rotate keys
+- [x] Sentry integrated (`@sentry/react`) — DSN via `VITE_SENTRY_DSN`, disabled if unset
+- [x] UptimeRobot monitoring `/health` every 5 minutes, alerts to stormassistia@gmail.com
+- [x] `/health` endpoint pings DB, returns 503 if unreachable
+- [x] RUNBOOK.md — restart, migrate, rotate keys, view logs, storage policies, quota alerts
+- [ ] Set Google AI quota alerts in Google Cloud Console → Generative Language API → 80% threshold
+- [ ] Supabase query performance monitoring (Supabase dashboard → Reports)
 
 ---
 
 ## Quick Reference: What Currently Works vs. What Doesn't
 
-| Feature | Status | Blocker |
-|---------|--------|---------|
-| Google Sign-In | Works locally | New Firebase project needed for prod |
-| Investigation (AI analysis) | Works locally | API key exposed in bundle |
-| Comparison | Works locally | API key exposed in bundle |
-| Reverse Engineer | Works locally | API key exposed in bundle |
-| Compliance Audit | Works locally | API key exposed in bundle |
-| Save/Load Reports | Works locally | Hardcoded localhost URL |
-| Master Baselines | Works locally | Hardcoded localhost URL |
-| File uploads to Supabase | Works | — |
-| Carrier Guidelines (web-grounded) | Works locally | API key exposed |
-| Market Intel | Works locally | API key exposed |
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Google Sign-In | **Production** | Firebase project `scopeadjuster-prod` |
+| Investigation (AI analysis) | **Production** | Gemini key on backend |
+| Comparison | **Production** | Gemini key on backend |
+| Reverse Engineer | **Production** | Gemini key on backend |
+| Compliance Audit | **Production** | Gemini key on backend |
+| Save/Load Reports | **Production** | Backend API on Vercel |
+| Master Baselines | **Production** | Backend API on Vercel |
+| File uploads to Supabase | **Production** | — |
+| Carrier Guidelines (web-grounded) | **Production** | Gemini key on backend |
+| Market Intel | **Production** | Gemini key on backend |
 | Worker / ingestion pipeline | Does NOT work | Fully stubbed |
 | Multi-tenant orgs/projects | Does NOT work | Schema exists, no routes |
