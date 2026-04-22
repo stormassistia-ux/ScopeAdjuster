@@ -120,46 +120,27 @@ Currently the app uses both Firestore (user profile docs, legacy) and Postgres (
 
 ## Phase 5 — Deployment Infrastructure
 
-### 5.1 Frontend — Vercel or Cloudflare Pages (recommended)
-- [x] Create `vercel.json` — build command, output dir, SPA rewrites configured
-- [ ] Set production environment variables in Vercel dashboard:
-  - `VITE_API_BASE_URL`
-  - `VITE_SUPABASE_URL`
-  - `VITE_SUPABASE_ANON_KEY`
-  - `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`, `VITE_FIREBASE_PROJECT_ID`
-  - `VITE_FIREBASE_STORAGE_BUCKET`, `VITE_FIREBASE_MESSAGING_SENDER_ID`, `VITE_FIREBASE_APP_ID`
-- [ ] Connect GitHub repo to Vercel dashboard and set up custom domain
+### 5.1 Frontend — Vercel ✅
+- [x] `vercel.json` — multi-service experimentalServices config, SPA rewrites
+- [x] All 9 `VITE_*` env vars set in Vercel dashboard (Production + Preview)
+- [x] GitHub repo `stormassistia-ux/ScopeAdjuster` connected; live at `scope-adjuster-roan.vercel.app`
+- [ ] Custom domain (optional — purchase via Vercel or point existing DNS)
 
-### 5.2 Backend — Railway, Render, or Cloud Run (recommended)
-- [x] `backend/Dockerfile` created (multi-stage: builder + production, node:22-alpine)
-- [x] `backend/.dockerignore` created
-- [x] `backend/tsconfig.json` — `outDir: ./dist`, `rootDir: ./src`, `include: ["src/**/*"]`; type-check passes clean
-- [ ] Set production environment variables in your platform:
-  - `DATABASE_URL` (use PgBouncer pooling URL from Supabase)
-  - `GEMINI_API_KEY`
-  - `FIREBASE_PROJECT_ID`
-  - `ALLOWED_ORIGINS` (comma-separated production domains)
-  - `PORT` (optional, defaults to 3001)
-- [ ] Push backend Docker image to registry and deploy
+### 5.2 Backend — Vercel (experimental services) ✅
+- [x] `backend/Dockerfile` — multi-stage node:22-alpine
+- [x] `backend/tsconfig.json` — rootDir/outDir/include fixed; tsc clean
+- [x] `DATABASE_URL`, `GEMINI_API_KEY`, `FIREBASE_PROJECT_ID`, `ALLOWED_ORIGINS` set in Vercel dashboard
+- [x] Backend deployed alongside frontend as Vercel service
 
-### 5.3 Database — Supabase (already provisioned)
-- [x] RLS migration created at `backend/prisma/migrations/20260422000000_rls_policies/migration.sql`
-- [ ] Run `cd backend && npx prisma migrate deploy` against production DATABASE_URL to apply RLS policies
-- [ ] In Supabase dashboard: set per-request `app.current_user_id` session variable in backend before RLS policies are active (add `SET LOCAL "app.current_user_id" = $uid` in a Prisma middleware or route middleware)
-- [ ] Confirm Supabase project is on a paid plan if you expect significant data volume
-- [ ] Set up Supabase Storage bucket `estimates` access policies in dashboard:
-  - Authenticated users can upload to their own path (`userId/filename`)
-  - Public read only if URLs are meant to be shareable
-- [ ] Set `DATABASE_URL` to the PgBouncer pooling URL (port 6543) for production
+### 5.3 Database — Supabase ✅ (partial)
+- [x] RLS migration SQL created at `backend/prisma/migrations/20260422000000_rls_policies/`
+- [ ] Run `cd backend && npx prisma migrate deploy` against production DATABASE_URL
+- [ ] Wire `SET LOCAL "app.current_user_id"` per-request before enabling RLS policies
+- [ ] Confirm Supabase Storage bucket `estimates` access policies in dashboard
 
-### 5.4 CI/CD Pipeline
-- [x] `.github/workflows/deploy.yml` created with:
-  - Frontend type-check + build on every PR and push
-  - Backend type-check on every PR and push
-  - Auto-deploy frontend to Vercel on merge to `main`
-  - Docker build verification on merge to `main`
-- [ ] Add GitHub Secrets: `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID`, all `VITE_*` env vars
-- [ ] Wire backend auto-deploy step once Railway/Render/Cloud Run platform is chosen
+### 5.4 CI/CD Pipeline ✅
+- [x] `.github/workflows/deploy.yml` — type-check + build on PR, auto-deploy on main merge
+- [x] All 12 GitHub secrets set: `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID` + all `VITE_*`
 
 ---
 
