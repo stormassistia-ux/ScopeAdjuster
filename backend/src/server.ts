@@ -1,9 +1,13 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import rateLimit from 'express-rate-limit';
+import pinoHttp from 'pino-http';
 import { PrismaClient } from '@prisma/client';
 import { requireAuth, AuthenticatedRequest } from './middleware/auth';
 import aiRouter from './routes/ai';
+import { logger } from './logger';
+import { CreateReportSchema, CreateBaselineSchema, validate } from './validation';
 
 dotenv.config();
 
@@ -16,151 +20,142 @@ const allowedOrigins = process.env.ALLOWED_ORIGINS
 
 app.use(cors({ origin: allowedOrigins, credentials: true }));
 app.use(express.json({ limit: '50mb' }));
+app.use(pinoHttp({ logger }));
+
+// Global rate limit: 120 requests per 15 minutes per IP
+const globalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 120,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests, please try again later.' }
+});
+app.use(globalLimiter);
 
 const PORT = process.env.PORT || 3001;
 
-// Health check endpoint (Public)
-app.get('/health', (req, res) => {
+// ============================================
+// HEALTH (Public)
+// ============================================
+app.get('/health', (_req, res) => {
   res.json({ status: 'ok', service: 'core-api' });
 });
 
 // ============================================
-// AI ROUTES (Protected — proxies Gemini calls)
+// AI ROUTES (stricter rate limit: 30 req/min)
 // ============================================
-app.use('/api/ai', aiRouter);
+const aiLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'AI request limit reached, please wait a moment.' }
+});
+app.use('/api/ai', aiLimiter, aiRouter);
 
 // ============================================
-// API ROUTES (Protected)
+// REPORTS (Protected)
 // ============================================
-
-// 1. Saved Reports (Replaces Firestore `reports` collection)
 app.get('/api/reports', requireAuth, async (req: AuthenticatedRequest, res: express.Response) => {
   try {
-    const userId = req.user.uid;
     const reports = await prisma.savedReport.findMany({
-      where: { userId },
+      where: { userId: req.user.uid },
       orderBy: { timestamp: 'desc' }
     });
     res.json(reports);
   } catch (error) {
-    console.error('Fetch reports error:', error);
+    logger.error({ error }, 'Fetch reports error');
     res.status(500).json({ error: 'Failed to fetch reports' });
   }
 });
 
 app.post('/api/reports', requireAuth, async (req: AuthenticatedRequest, res: express.Response) => {
+  const body = validate(CreateReportSchema, req.body, res);
+  if (!body) return;
+
   try {
-    const userId = req.user.uid;
-    const { id, type, title, carrier, timestamp, platform, state } = req.body;
-    
     const newReport = await prisma.savedReport.create({
-      data: {
-        id: id || undefined,
-        userId,
-        type,
-        title,
-        carrier,
-        timestamp,
-        platform,
-        state
-      }
+      data: { ...body, id: body.id || undefined, userId: req.user.uid, state: body.state as any }
     });
     res.status(201).json(newReport);
   } catch (error) {
-    console.error('Save report error:', error);
+    logger.error({ error }, 'Save report error');
     res.status(500).json({ error: 'Failed to save report' });
   }
 });
 
 app.delete('/api/reports/:id', requireAuth, async (req: AuthenticatedRequest, res: express.Response) => {
   try {
-    const id = req.params.id as string;
-    const userId = req.user.uid;
-
+    const { id } = req.params as { id: string };
     const report = await prisma.savedReport.findUnique({ where: { id } });
-    if (!report || report.userId !== userId) {
+    if (!report || report.userId !== req.user.uid) {
       return res.status(403).json({ error: 'Not authorized or not found' });
     }
-
     await prisma.savedReport.delete({ where: { id } });
     res.json({ success: true });
   } catch (error) {
-    console.error('Delete report error:', error);
+    logger.error({ error }, 'Delete report error');
     res.status(500).json({ error: 'Failed to delete report' });
   }
 });
 
-// 2. Master Baselines (Replaces Firestore `baselines` collection)
+// ============================================
+// BASELINES (Protected)
+// ============================================
 app.get('/api/baselines', requireAuth, async (req: AuthenticatedRequest, res: express.Response) => {
   try {
-    const userId = req.user.uid;
     const baselines = await prisma.masterBaseline.findMany({
-      where: { userId },
+      where: { userId: req.user.uid },
       orderBy: { timestamp: 'desc' }
     });
     res.json(baselines);
   } catch (error) {
-    console.error('Fetch baselines error:', error);
+    logger.error({ error }, 'Fetch baselines error');
     res.status(500).json({ error: 'Failed to fetch baselines' });
   }
 });
 
 app.post('/api/baselines', requireAuth, async (req: AuthenticatedRequest, res: express.Response) => {
-  try {
-    const userId = req.user.uid;
-    const { id, name, description, platform, timestamp, lineItems, metadata } = req.body;
-    
-    // Check if it already exists -> then update instead (acting like setDoc)
-    if (id) {
-        const existing = await prisma.masterBaseline.findUnique({ where: { id } });
-        if (existing) {
-             if (existing.userId !== userId) return res.status(403).json({ error: 'Not authorized' });
-             const updated = await prisma.masterBaseline.update({
-                 where: { id },
-                 data: { name, description, platform, timestamp, lineItems, metadata }
-             });
-             return res.json(updated);
-        }
-    }
+  const body = validate(CreateBaselineSchema, req.body, res);
+  if (!body) return;
 
-    const newBaseline = await prisma.masterBaseline.create({
-      data: {
-        id: id || undefined,
-        userId,
-        name,
-        description,
-        platform,
-        timestamp,
-        lineItems,
-        metadata
+  try {
+    if (body.id) {
+      const existing = await prisma.masterBaseline.findUnique({ where: { id: body.id } });
+      if (existing) {
+        if (existing.userId !== req.user.uid) return res.status(403).json({ error: 'Not authorized' });
+        const updated = await prisma.masterBaseline.update({
+          where: { id: body.id },
+          data: { name: body.name, description: body.description, platform: body.platform, timestamp: body.timestamp, lineItems: body.lineItems as any, metadata: body.metadata as any }
+        });
+        return res.json(updated);
       }
+    }
+    const newBaseline = await prisma.masterBaseline.create({
+      data: { ...body, id: body.id || undefined, userId: req.user.uid, lineItems: body.lineItems as any, metadata: body.metadata as any }
     });
     res.status(201).json(newBaseline);
   } catch (error) {
-    console.error('Save baseline error:', error);
+    logger.error({ error }, 'Save baseline error');
     res.status(500).json({ error: 'Failed to save baseline' });
   }
 });
 
 app.delete('/api/baselines/:id', requireAuth, async (req: AuthenticatedRequest, res: express.Response) => {
   try {
-    const id = req.params.id as string;
-    const userId = req.user.uid;
-
+    const { id } = req.params as { id: string };
     const baseline = await prisma.masterBaseline.findUnique({ where: { id } });
-    if (!baseline || baseline.userId !== userId) {
+    if (!baseline || baseline.userId !== req.user.uid) {
       return res.status(403).json({ error: 'Not authorized or not found' });
     }
-
     await prisma.masterBaseline.delete({ where: { id } });
     res.json({ success: true });
   } catch (error) {
-    console.error('Delete baseline error:', error);
+    logger.error({ error }, 'Delete baseline error');
     res.status(500).json({ error: 'Failed to delete baseline' });
   }
 });
 
-
 app.listen(PORT, () => {
-  console.log(`Core API Node Backend listening on port ${PORT}`);
+  logger.info({ port: PORT }, 'Core API listening');
 });

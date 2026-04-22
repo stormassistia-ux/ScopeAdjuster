@@ -10,17 +10,26 @@ import {
   suggestBaselineAdjustments,
   auditEstimate
 } from '../services/geminiService';
+import {
+  GuidelinesSchema,
+  AnalyzeSchema,
+  CompareSchema,
+  ReverseEngineerSchema,
+  ParseBaselineSchema,
+  MarketRatesSchema,
+  SuggestAdjustmentsSchema,
+  AuditSchema,
+  validate
+} from '../validation';
 
 const router = Router();
-
-// All AI routes require authentication
 router.use(requireAuth);
 
 router.post('/guidelines', async (req: AuthenticatedRequest, res) => {
-  const { carrier } = req.body;
-  if (!carrier) return res.status(400).json({ error: 'carrier is required' });
+  const body = validate(GuidelinesSchema, req.body, res);
+  if (!body) return;
   try {
-    const text = await fetchCarrierGuidelines(carrier);
+    const text = await fetchCarrierGuidelines(body.carrier);
     res.json({ text });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -28,12 +37,10 @@ router.post('/guidelines', async (req: AuthenticatedRequest, res) => {
 });
 
 router.post('/analyze', async (req: AuthenticatedRequest, res) => {
-  const { platform, carrier, synopsis, guidelines, evidence, rooms } = req.body;
-  if (!platform || !carrier || !synopsis || !evidence || !rooms) {
-    return res.status(400).json({ error: 'platform, carrier, synopsis, evidence, and rooms are required' });
-  }
+  const body = validate(AnalyzeSchema, req.body, res);
+  if (!body) return;
   try {
-    const result = await analyzeDamage(platform, carrier, synopsis, guidelines, evidence, rooms);
+    const result = await analyzeDamage(body.platform as any, body.carrier, body.synopsis, body.guidelines, body.evidence as any, body.rooms as any);
     res.json(result);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -41,12 +48,10 @@ router.post('/analyze', async (req: AuthenticatedRequest, res) => {
 });
 
 router.post('/compare', async (req: AuthenticatedRequest, res) => {
-  const { fileA, fileB, platformA, platformB, baseline } = req.body;
-  if (!fileA || !fileB || !platformA || !platformB) {
-    return res.status(400).json({ error: 'fileA, fileB, platformA, and platformB are required' });
-  }
+  const body = validate(CompareSchema, req.body, res);
+  if (!body) return;
   try {
-    const result = await compareEstimates(fileA, fileB, platformA, platformB, baseline);
+    const result = await compareEstimates(body.fileA as any, body.fileB as any, body.platformA as any, body.platformB as any, body.baseline as any);
     res.json(result);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -54,12 +59,10 @@ router.post('/compare', async (req: AuthenticatedRequest, res) => {
 });
 
 router.post('/reverse-engineer', async (req: AuthenticatedRequest, res) => {
-  const { sourceFile, sourcePlatform, targetPlatform } = req.body;
-  if (!sourceFile || !sourcePlatform || !targetPlatform) {
-    return res.status(400).json({ error: 'sourceFile, sourcePlatform, and targetPlatform are required' });
-  }
+  const body = validate(ReverseEngineerSchema, req.body, res);
+  if (!body) return;
   try {
-    const items = await reverseEngineerEstimate(sourceFile, sourcePlatform, targetPlatform);
+    const items = await reverseEngineerEstimate(body.sourceFile as any, body.sourcePlatform as any, body.targetPlatform as any);
     res.json(items);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -67,12 +70,10 @@ router.post('/reverse-engineer', async (req: AuthenticatedRequest, res) => {
 });
 
 router.post('/parse-baseline', async (req: AuthenticatedRequest, res) => {
-  const { file, platform } = req.body;
-  if (!file || !platform) {
-    return res.status(400).json({ error: 'file and platform are required' });
-  }
+  const body = validate(ParseBaselineSchema, req.body, res);
+  if (!body) return;
   try {
-    const items = await parseBaselineFile(file, platform);
+    const items = await parseBaselineFile(body.file as any, body.platform as any);
     res.json(items);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -80,10 +81,10 @@ router.post('/parse-baseline', async (req: AuthenticatedRequest, res) => {
 });
 
 router.post('/market-rates', async (req: AuthenticatedRequest, res) => {
-  const { zipCode } = req.body;
-  if (!zipCode) return res.status(400).json({ error: 'zipCode is required' });
+  const body = validate(MarketRatesSchema, req.body, res);
+  if (!body) return;
   try {
-    const intel = await searchMarketRates(zipCode);
+    const intel = await searchMarketRates(body.zipCode);
     res.json(intel);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -91,12 +92,10 @@ router.post('/market-rates', async (req: AuthenticatedRequest, res) => {
 });
 
 router.post('/suggest-adjustments', async (req: AuthenticatedRequest, res) => {
-  const { baseline, marketIntel } = req.body;
-  if (!baseline || !marketIntel) {
-    return res.status(400).json({ error: 'baseline and marketIntel are required' });
-  }
+  const body = validate(SuggestAdjustmentsSchema, req.body, res);
+  if (!body) return;
   try {
-    const adjustments = await suggestBaselineAdjustments(baseline, marketIntel);
+    const adjustments = await suggestBaselineAdjustments(body.baseline as any, body.marketIntel as any);
     res.json(adjustments);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -104,12 +103,10 @@ router.post('/suggest-adjustments', async (req: AuthenticatedRequest, res) => {
 });
 
 router.post('/audit', async (req: AuthenticatedRequest, res) => {
-  const { estimateFile, carrier, guidelines, platform } = req.body;
-  if (!estimateFile || !carrier || !platform) {
-    return res.status(400).json({ error: 'estimateFile, carrier, and platform are required' });
-  }
+  const body = validate(AuditSchema, req.body, res);
+  if (!body) return;
   try {
-    const result = await auditEstimate(estimateFile, carrier, guidelines, platform);
+    const result = await auditEstimate(body.estimateFile as any, body.carrier, body.guidelines, body.platform as any);
     res.json(result);
   } catch (err: any) {
     res.status(500).json({ error: err.message });

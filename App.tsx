@@ -545,9 +545,9 @@ const App: React.FC = () => {
                   `${finalState.platformB}`,
         state: {
           ...finalState,
-          evidence: finalState.evidence.map((e: any) => ({ ...e, base64: '' })), // Clear large images for storage
-          fileA: finalState.fileA ? { ...finalState.fileA, file: undefined } : undefined,
-          fileB: finalState.fileB ? { ...finalState.fileB, file: undefined } : undefined
+          evidence: finalState.evidence.map((e: any) => ({ ...e, base64: '' })),
+          fileA: finalState.fileA ? { ...finalState.fileA, base64: '', file: undefined } : undefined,
+          fileB: finalState.fileB ? { ...finalState.fileB, base64: '', file: undefined } : undefined
         }
       };
 

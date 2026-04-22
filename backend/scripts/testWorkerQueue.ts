@@ -1,4 +1,4 @@
-import { runComparisonJob, runIngestionJob } from './worker';
+import { runComparisonJob, runIngestionJob } from '../src/worker';
 
 async function simulateWorkerEnvironment() {
   console.log("==========================================");
