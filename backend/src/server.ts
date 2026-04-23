@@ -85,8 +85,8 @@ app.get('/health', async (_req, res) => {
   try {
     await pool.query('SELECT 1');
     res.json({ status: 'ok', service: 'core-api', db: 'connected', ts: new Date().toISOString() });
-  } catch {
-    res.status(503).json({ status: 'degraded', service: 'core-api', db: 'unreachable', ts: new Date().toISOString() });
+  } catch (err) {
+    res.status(503).json({ status: 'degraded', service: 'core-api', db: 'unreachable', detail: (err as Error).message, ts: new Date().toISOString() });
   }
 });
 
@@ -221,13 +221,10 @@ app.delete('/api/baselines/:id', requireAuth, async (req: AuthenticatedRequest, 
   }
 });
 
-runMigrations()
-  .then(() => {
-    app.listen(PORT, () => {
-      logger.info({ port: PORT }, 'Core API listening');
-    });
-  })
-  .catch((err) => {
-    logger.error({ err }, 'DB migration failed — server not started');
-    process.exit(1);
-  });
+runMigrations().catch((err) => {
+  logger.error({ err }, 'DB migration failed — routes may fail until fixed');
+});
+
+app.listen(PORT, () => {
+  logger.info({ port: PORT }, 'Core API listening');
+});
