@@ -225,6 +225,12 @@ runMigrations().catch((err) => {
   logger.error({ err }, 'DB migration failed — routes may fail until fixed');
 });
 
-app.listen(PORT, () => {
-  logger.info({ port: PORT }, 'Core API listening');
-});
+// Local dev: start a real HTTP server.
+// On Vercel serverless: app is exported as module.exports below and invoked per-request.
+if (process.env.VERCEL !== '1') {
+  app.listen(PORT, () => {
+    logger.info({ port: PORT }, 'Core API listening');
+  });
+}
+
+module.exports = app;

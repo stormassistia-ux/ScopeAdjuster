@@ -2,14 +2,13 @@
   "name": "backend",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "dist/server.js",
   "scripts": {
     "start": "node dist/server.js",
     "dev": "nodemon src/server.ts",
     "test:worker": "ts-node src/testWorkerQueue.ts",
     "build": "tsc",
-    "vercel-build": "tsc",
-    "postinstall": "tsc"
+    "vercel-build": "tsc"
   },
   "keywords": [],
   "author": "",
