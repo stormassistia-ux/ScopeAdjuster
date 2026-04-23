@@ -22,6 +22,7 @@ const allowedOrigins = process.env.ALLOWED_ORIGINS
   ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim())
   : ['http://localhost:3000'];
 
+app.set('trust proxy', 1); // Required for Vercel — allows req.ip behind proxy
 app.use(cors({ origin: allowedOrigins, credentials: true }));
 app.use(express.json({ limit: '50mb' }));
 app.use(pinoHttp({ logger }));
@@ -31,6 +32,7 @@ const globalLimiter = rateLimit({
   max: 120,
   standardHeaders: true,
   legacyHeaders: false,
+  validate: { trustProxy: false }, // We handle trust proxy above via app.set
   message: { error: 'Too many requests, please try again later.' }
 });
 app.use(globalLimiter);
@@ -225,12 +227,10 @@ runMigrations().catch((err) => {
   logger.error({ err }, 'DB migration failed — routes may fail until fixed');
 });
 
-// Local dev: start a real HTTP server.
-// On Vercel serverless: app is exported as module.exports below and invoked per-request.
-if (process.env.VERCEL !== '1') {
-  app.listen(PORT, () => {
-    logger.info({ port: PORT }, 'Core API listening');
-  });
-}
+// Always start the server — experimentalServices runs this as a long-lived process.
+// Also export app for any serverless invocation path.
+app.listen(PORT, () => {
+  logger.info({ port: PORT }, 'Core API listening');
+});
 
 module.exports = app;
