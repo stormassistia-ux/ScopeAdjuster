@@ -3,6 +3,8 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import rateLimit from 'express-rate-limit';
 import pinoHttp from 'pino-http';
+import { Pool } from 'pg';
+import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '@prisma/client';
 import { requireAuth, AuthenticatedRequest } from './middleware/auth';
 import aiRouter from './routes/ai';
@@ -12,9 +14,9 @@ import { CreateReportSchema, CreateBaselineSchema, validate } from './validation
 dotenv.config();
 
 const app = express();
-const prisma = new PrismaClient({
-  datasources: { db: { url: process.env.DATABASE_URL } },
-} as any);
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+const adapter = new PrismaPg(pool);
+const prisma = new PrismaClient({ adapter } as any);
 
 const allowedOrigins = process.env.ALLOWED_ORIGINS
   ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim())
