@@ -4,8 +4,7 @@ import dotenv from 'dotenv';
 import rateLimit from 'express-rate-limit';
 import pinoHttp from 'pino-http';
 import { Pool } from 'pg';
-import { PrismaPg } from '@prisma/adapter-pg';
-import { PrismaClient } from '@prisma/client';
+import { randomUUID } from 'node:crypto';
 import { requireAuth, AuthenticatedRequest } from './middleware/auth';
 import aiRouter from './routes/ai';
 import { logger } from './logger';
@@ -14,9 +13,10 @@ import { CreateReportSchema, CreateBaselineSchema, validate } from './validation
 dotenv.config();
 
 const app = express();
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-const adapter = new PrismaPg(pool);
-const prisma = new PrismaClient({ adapter });
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: { rejectUnauthorized: false },
+});
 
 const allowedOrigins = process.env.ALLOWED_ORIGINS
   ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim())
@@ -26,7 +26,6 @@ app.use(cors({ origin: allowedOrigins, credentials: true }));
 app.use(express.json({ limit: '50mb' }));
 app.use(pinoHttp({ logger }));
 
-// Global rate limit: 120 requests per 15 minutes per IP
 const globalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 120,
@@ -38,12 +37,22 @@ app.use(globalLimiter);
 
 const PORT = process.env.PORT || 3001;
 
+// Convert snake_case DB row keys to camelCase for the frontend
+function toCamel(row: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(row).map(([k, v]) => [
+      k.replace(/_([a-z])/g, (_, c: string) => c.toUpperCase()),
+      v,
+    ])
+  );
+}
+
 // ============================================
 // HEALTH (Public)
 // ============================================
 app.get('/health', async (_req, res) => {
   try {
-    await prisma.$queryRaw`SELECT 1`;
+    await pool.query('SELECT 1');
     res.json({ status: 'ok', service: 'core-api', db: 'connected', ts: new Date().toISOString() });
   } catch {
     res.status(503).json({ status: 'degraded', service: 'core-api', db: 'unreachable', ts: new Date().toISOString() });
@@ -67,11 +76,11 @@ app.use('/api/ai', aiLimiter, aiRouter);
 // ============================================
 app.get('/api/reports', requireAuth, async (req: AuthenticatedRequest, res: express.Response) => {
   try {
-    const reports = await prisma.savedReport.findMany({
-      where: { userId: req.user.uid },
-      orderBy: { timestamp: 'desc' }
-    });
-    res.json(reports);
+    const result = await pool.query(
+      'SELECT * FROM saved_reports WHERE user_id = $1 ORDER BY timestamp DESC',
+      [req.user.uid]
+    );
+    res.json(result.rows.map(toCamel));
   } catch (error) {
     logger.error({ error }, 'Fetch reports error');
     res.status(500).json({ error: 'Failed to fetch reports' });
@@ -83,10 +92,14 @@ app.post('/api/reports', requireAuth, async (req: AuthenticatedRequest, res: exp
   if (!body) return;
 
   try {
-    const newReport = await prisma.savedReport.create({
-      data: { ...body, id: body.id || undefined, userId: req.user.uid, state: body.state as any }
-    });
-    res.status(201).json(newReport);
+    const id = body.id || randomUUID();
+    const result = await pool.query(
+      `INSERT INTO saved_reports (id, user_id, type, title, carrier, timestamp, platform, state)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       RETURNING *`,
+      [id, req.user.uid, body.type, body.title, body.carrier, body.timestamp, body.platform, JSON.stringify(body.state)]
+    );
+    res.status(201).json(toCamel(result.rows[0]));
   } catch (error) {
     logger.error({ error }, 'Save report error');
     res.status(500).json({ error: 'Failed to save report' });
@@ -96,11 +109,11 @@ app.post('/api/reports', requireAuth, async (req: AuthenticatedRequest, res: exp
 app.delete('/api/reports/:id', requireAuth, async (req: AuthenticatedRequest, res: express.Response) => {
   try {
     const { id } = req.params as { id: string };
-    const report = await prisma.savedReport.findUnique({ where: { id } });
-    if (!report || report.userId !== req.user.uid) {
+    const check = await pool.query('SELECT user_id FROM saved_reports WHERE id = $1', [id]);
+    if (!check.rows[0] || check.rows[0].user_id !== req.user.uid) {
       return res.status(403).json({ error: 'Not authorized or not found' });
     }
-    await prisma.savedReport.delete({ where: { id } });
+    await pool.query('DELETE FROM saved_reports WHERE id = $1', [id]);
     res.json({ success: true });
   } catch (error) {
     logger.error({ error }, 'Delete report error');
@@ -113,11 +126,11 @@ app.delete('/api/reports/:id', requireAuth, async (req: AuthenticatedRequest, re
 // ============================================
 app.get('/api/baselines', requireAuth, async (req: AuthenticatedRequest, res: express.Response) => {
   try {
-    const baselines = await prisma.masterBaseline.findMany({
-      where: { userId: req.user.uid },
-      orderBy: { timestamp: 'desc' }
-    });
-    res.json(baselines);
+    const result = await pool.query(
+      'SELECT * FROM master_baselines WHERE user_id = $1 ORDER BY timestamp DESC',
+      [req.user.uid]
+    );
+    res.json(result.rows.map(toCamel));
   } catch (error) {
     logger.error({ error }, 'Fetch baselines error');
     res.status(500).json({ error: 'Failed to fetch baselines' });
@@ -130,20 +143,32 @@ app.post('/api/baselines', requireAuth, async (req: AuthenticatedRequest, res: e
 
   try {
     if (body.id) {
-      const existing = await prisma.masterBaseline.findUnique({ where: { id: body.id } });
-      if (existing) {
-        if (existing.userId !== req.user.uid) return res.status(403).json({ error: 'Not authorized' });
-        const updated = await prisma.masterBaseline.update({
-          where: { id: body.id },
-          data: { name: body.name, description: body.description, platform: body.platform, timestamp: body.timestamp, lineItems: body.lineItems as any, metadata: body.metadata as any }
-        });
-        return res.json(updated);
+      const check = await pool.query('SELECT user_id FROM master_baselines WHERE id = $1', [body.id]);
+      if (check.rows[0]) {
+        if (check.rows[0].user_id !== req.user.uid) {
+          return res.status(403).json({ error: 'Not authorized' });
+        }
+        const result = await pool.query(
+          `UPDATE master_baselines
+           SET name=$1, description=$2, platform=$3, timestamp=$4, line_items=$5, metadata=$6
+           WHERE id=$7
+           RETURNING *`,
+          [body.name, body.description, body.platform, body.timestamp,
+           JSON.stringify(body.lineItems), body.metadata ? JSON.stringify(body.metadata) : null,
+           body.id]
+        );
+        return res.json(toCamel(result.rows[0]));
       }
     }
-    const newBaseline = await prisma.masterBaseline.create({
-      data: { ...body, id: body.id || undefined, userId: req.user.uid, lineItems: body.lineItems as any, metadata: body.metadata as any }
-    });
-    res.status(201).json(newBaseline);
+    const id = body.id || randomUUID();
+    const result = await pool.query(
+      `INSERT INTO master_baselines (id, user_id, name, description, platform, timestamp, line_items, metadata)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       RETURNING *`,
+      [id, req.user.uid, body.name, body.description, body.platform, body.timestamp,
+       JSON.stringify(body.lineItems), body.metadata ? JSON.stringify(body.metadata) : null]
+    );
+    res.status(201).json(toCamel(result.rows[0]));
   } catch (error) {
     logger.error({ error }, 'Save baseline error');
     res.status(500).json({ error: 'Failed to save baseline' });
@@ -153,11 +178,11 @@ app.post('/api/baselines', requireAuth, async (req: AuthenticatedRequest, res: e
 app.delete('/api/baselines/:id', requireAuth, async (req: AuthenticatedRequest, res: express.Response) => {
   try {
     const { id } = req.params as { id: string };
-    const baseline = await prisma.masterBaseline.findUnique({ where: { id } });
-    if (!baseline || baseline.userId !== req.user.uid) {
+    const check = await pool.query('SELECT user_id FROM master_baselines WHERE id = $1', [id]);
+    if (!check.rows[0] || check.rows[0].user_id !== req.user.uid) {
       return res.status(403).json({ error: 'Not authorized or not found' });
     }
-    await prisma.masterBaseline.delete({ where: { id } });
+    await pool.query('DELETE FROM master_baselines WHERE id = $1', [id]);
     res.json({ success: true });
   } catch (error) {
     logger.error({ error }, 'Delete baseline error');
