@@ -37,6 +37,37 @@ app.use(globalLimiter);
 
 const PORT = process.env.PORT || 3001;
 
+// Ensures required tables exist. Safe to call on every startup — all statements are idempotent.
+async function runMigrations() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS saved_reports (
+      id          TEXT PRIMARY KEY,
+      user_id     TEXT NOT NULL,
+      type        TEXT NOT NULL,
+      title       TEXT NOT NULL,
+      carrier     TEXT NOT NULL,
+      timestamp   FLOAT NOT NULL,
+      platform    TEXT NOT NULL,
+      state       JSONB NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS saved_reports_user_id_idx  ON saved_reports (user_id);
+    CREATE INDEX IF NOT EXISTS saved_reports_timestamp_idx ON saved_reports (timestamp DESC);
+
+    CREATE TABLE IF NOT EXISTS master_baselines (
+      id          TEXT PRIMARY KEY,
+      user_id     TEXT NOT NULL,
+      name        TEXT NOT NULL,
+      description TEXT NOT NULL,
+      platform    TEXT NOT NULL,
+      timestamp   FLOAT NOT NULL,
+      line_items  JSONB NOT NULL,
+      metadata    JSONB
+    );
+    CREATE INDEX IF NOT EXISTS master_baselines_user_id_idx ON master_baselines (user_id);
+  `);
+  logger.info('DB migrations complete');
+}
+
 // Convert snake_case DB row keys to camelCase for the frontend
 function toCamel(row: Record<string, unknown>): Record<string, unknown> {
   return Object.fromEntries(
@@ -83,7 +114,7 @@ app.get('/api/reports', requireAuth, async (req: AuthenticatedRequest, res: expr
     res.json(result.rows.map(toCamel));
   } catch (error) {
     logger.error({ error }, 'Fetch reports error');
-    res.status(500).json({ error: 'Failed to fetch reports' });
+    res.status(500).json({ error: 'Failed to fetch reports', detail: (error as Error).message });
   }
 });
 
@@ -102,7 +133,7 @@ app.post('/api/reports', requireAuth, async (req: AuthenticatedRequest, res: exp
     res.status(201).json(toCamel(result.rows[0]));
   } catch (error) {
     logger.error({ error }, 'Save report error');
-    res.status(500).json({ error: 'Failed to save report' });
+    res.status(500).json({ error: 'Failed to save report', detail: (error as Error).message });
   }
 });
 
@@ -117,7 +148,7 @@ app.delete('/api/reports/:id', requireAuth, async (req: AuthenticatedRequest, re
     res.json({ success: true });
   } catch (error) {
     logger.error({ error }, 'Delete report error');
-    res.status(500).json({ error: 'Failed to delete report' });
+    res.status(500).json({ error: 'Failed to delete report', detail: (error as Error).message });
   }
 });
 
@@ -133,7 +164,7 @@ app.get('/api/baselines', requireAuth, async (req: AuthenticatedRequest, res: ex
     res.json(result.rows.map(toCamel));
   } catch (error) {
     logger.error({ error }, 'Fetch baselines error');
-    res.status(500).json({ error: 'Failed to fetch baselines' });
+    res.status(500).json({ error: 'Failed to fetch baselines', detail: (error as Error).message });
   }
 });
 
@@ -171,7 +202,7 @@ app.post('/api/baselines', requireAuth, async (req: AuthenticatedRequest, res: e
     res.status(201).json(toCamel(result.rows[0]));
   } catch (error) {
     logger.error({ error }, 'Save baseline error');
-    res.status(500).json({ error: 'Failed to save baseline' });
+    res.status(500).json({ error: 'Failed to save baseline', detail: (error as Error).message });
   }
 });
 
@@ -186,10 +217,17 @@ app.delete('/api/baselines/:id', requireAuth, async (req: AuthenticatedRequest, 
     res.json({ success: true });
   } catch (error) {
     logger.error({ error }, 'Delete baseline error');
-    res.status(500).json({ error: 'Failed to delete baseline' });
+    res.status(500).json({ error: 'Failed to delete baseline', detail: (error as Error).message });
   }
 });
 
-app.listen(PORT, () => {
-  logger.info({ port: PORT }, 'Core API listening');
-});
+runMigrations()
+  .then(() => {
+    app.listen(PORT, () => {
+      logger.info({ port: PORT }, 'Core API listening');
+    });
+  })
+  .catch((err) => {
+    logger.error({ err }, 'DB migration failed — server not started');
+    process.exit(1);
+  });

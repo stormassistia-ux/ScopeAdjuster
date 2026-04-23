@@ -22,12 +22,23 @@ const handleApiError = (error: any, context: string): string => {
   return error?.message || `An unexpected error occurred during ${context}. Please check your connection.`;
 };
 
-/**
- * Extracts the base64 data portion of a Data URL without duplicating large strings via split()
- */
 const getBase64Data = (dataUrl: string): string => {
   const index = dataUrl.indexOf(',');
   return index !== -1 ? dataUrl.substring(index + 1) : dataUrl;
+};
+
+// Resolves an EvidenceItem to a raw base64 string for Gemini inlineData.
+// Prefers item.base64 when present; falls back to fetching from item.storageUrl
+// so that the frontend can strip base64 and stay under Vercel's 4.5MB body limit.
+const resolveBase64 = async (item: EvidenceItem): Promise<string> => {
+  if (item.base64) return getBase64Data(item.base64);
+  if (item.storageUrl) {
+    const res = await fetch(item.storageUrl);
+    if (!res.ok) throw new Error(`Failed to fetch file from storage: ${res.status}`);
+    const buf = await res.arrayBuffer();
+    return Buffer.from(buf).toString('base64');
+  }
+  throw new Error('EvidenceItem has neither base64 data nor a storageUrl.');
 };
 
 export const fetchCarrierGuidelines = async (carrier: string): Promise<string> => {
@@ -74,12 +85,9 @@ export const analyzeDamage = async (
   rooms: { [id: string]: string }
 ): Promise<{ lineItems: LineItem[]; labeledEvidence: EvidenceItem[] }> => {
   try {
-    const mediaParts = evidence.map(item => ({
-      inlineData: { 
-        data: getBase64Data(item.base64), 
-        mimeType: item.mimeType 
-      }
-    }));
+    const mediaParts = await Promise.all(evidence.map(async item => ({
+      inlineData: { data: await resolveBase64(item), mimeType: item.mimeType }
+    })));
 
     const prompt = `Target Platform: ${platform}. 
       Insurance Carrier: ${carrier}.
@@ -203,8 +211,8 @@ export const compareEstimates = async (
       model: 'gemini-3-pro-preview',
       contents: {
         parts: [
-          { inlineData: { data: getBase64Data(fileA.base64), mimeType: fileA.mimeType } },
-          { inlineData: { data: getBase64Data(fileB.base64), mimeType: fileB.mimeType } },
+          { inlineData: { data: await resolveBase64(fileA), mimeType: fileA.mimeType } },
+          { inlineData: { data: await resolveBase64(fileB), mimeType: fileB.mimeType } },
           { text: prompt }
         ]
       },
@@ -278,7 +286,7 @@ export const reverseEngineerEstimate = async (
       model: 'gemini-3.1-pro-preview',
       contents: {
         parts: [
-          { inlineData: { data: getBase64Data(sourceFile.base64), mimeType: sourceFile.mimeType } },
+          { inlineData: { data: await resolveBase64(sourceFile), mimeType: sourceFile.mimeType } },
           { text: prompt }
         ]
       },
@@ -344,7 +352,7 @@ export const parseBaselineFile = async (file: EvidenceItem, platform: Platform):
       model: 'gemini-3.1-pro-preview',
       contents: {
         parts: [
-          { inlineData: { data: getBase64Data(file.base64), mimeType: file.mimeType } },
+          { inlineData: { data: await resolveBase64(file), mimeType: file.mimeType } },
           { text: prompt }
         ]
       },
@@ -541,7 +549,7 @@ export const auditEstimate = async (
       model: "gemini-3.1-pro-preview",
       contents: {
         parts: [
-          { inlineData: { data: getBase64Data(estimateFile.base64), mimeType: estimateFile.mimeType } },
+          { inlineData: { data: await resolveBase64(estimateFile), mimeType: estimateFile.mimeType } },
           { text: prompt }
         ]
       },

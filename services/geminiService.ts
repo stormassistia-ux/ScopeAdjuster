@@ -28,6 +28,10 @@ const post = async <T>(path: string, body: unknown): Promise<T> => {
   return res.json();
 };
 
+// Strip base64 before sending to backend — files are already in Supabase Storage.
+// The backend fetches file content from storageUrl to stay under Vercel's 4.5MB body limit.
+const slim = ({ base64: _b, ...rest }: EvidenceItem) => rest;
+
 export const fetchCarrierGuidelines = async (carrier: string): Promise<string> => {
   const { text } = await post<{ text: string }>('/guidelines', { carrier });
   return text;
@@ -41,7 +45,7 @@ export const analyzeDamage = async (
   evidence: EvidenceItem[],
   rooms: { [id: string]: string }
 ): Promise<{ lineItems: LineItem[]; labeledEvidence: EvidenceItem[] }> => {
-  return post('/analyze', { platform, carrier, synopsis, guidelines, evidence, rooms });
+  return post('/analyze', { platform, carrier, synopsis, guidelines, evidence: evidence.map(slim), rooms });
 };
 
 export const compareEstimates = async (
@@ -51,7 +55,7 @@ export const compareEstimates = async (
   platformB: Platform,
   baseline?: MasterBaseline
 ): Promise<ComparisonResult> => {
-  return post('/compare', { fileA, fileB, platformA, platformB, baseline });
+  return post('/compare', { fileA: slim(fileA), fileB: slim(fileB), platformA, platformB, baseline });
 };
 
 export const reverseEngineerEstimate = async (
@@ -59,11 +63,11 @@ export const reverseEngineerEstimate = async (
   sourcePlatform: Platform,
   targetPlatform: Platform
 ): Promise<LineItem[]> => {
-  return post('/reverse-engineer', { sourceFile, sourcePlatform, targetPlatform });
+  return post('/reverse-engineer', { sourceFile: slim(sourceFile), sourcePlatform, targetPlatform });
 };
 
 export const parseBaselineFile = async (file: EvidenceItem, platform: Platform): Promise<LineItem[]> => {
-  return post('/parse-baseline', { file, platform });
+  return post('/parse-baseline', { file: slim(file), platform });
 };
 
 export const searchMarketRates = async (zipCode: string): Promise<MarketIntel> => {
@@ -83,5 +87,5 @@ export const auditEstimate = async (
   guidelines: string,
   platform: Platform
 ): Promise<AuditResult> => {
-  return post('/audit', { estimateFile, carrier, guidelines, platform });
+  return post('/audit', { estimateFile: slim(estimateFile), carrier, guidelines, platform });
 };
